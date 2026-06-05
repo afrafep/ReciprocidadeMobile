@@ -1,21 +1,24 @@
 import { NextResponse } from "next/server";
 
-export async function GET() {
+interface Params {
+  params: Promise<{
+    cpf: string;
+  }>;
+}
+
+export async function GET(_req: Request, { params }: Params) {
   try {
+    const { cpf } = await params;
+    const cpfLimpo = cpf.replace(/\D/g, "");
+    const url = `${process.env.API_BASE_URL}/api/reciprocidade/solicitacoes/titular/${cpfLimpo}`;
     const headers = process.env.ACCESS_TOKEN
       ? { "X-Access-Token": process.env.ACCESS_TOKEN }
       : undefined;
-    const res = await fetch(
-      `${process.env.API_BASE_URL}/api/reciprocidade/filiadas`,
-      {
-        cache: "no-store",
-        headers,
-      }
-    );
+    const res = await fetch(url, { cache: "no-store", headers });
 
     if (!res.ok) {
       return NextResponse.json(
-        { error: "Erro ao consultar filiadas" },
+        { error: "Erro ao consultar solicitacoes do titular" },
         { status: res.status }
       );
     }

@@ -1,12 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   FaCalendarAlt,
   FaCheckCircle,
   FaChevronDown,
   FaClipboardList,
-  FaIdCard,
   FaMapMarkerAlt,
   FaPaperPlane,
   FaPlus,
@@ -42,6 +41,7 @@ interface SolicitacaoCadastrada {
   cpf: string;
   ufSolicitante: string;
   destinos: string[];
+  filiadaDestinoNome: string;
   dataIda: string;
   dataVolta: string;
   pessoas: number;
@@ -50,6 +50,7 @@ interface SolicitacaoCadastrada {
 interface SolicitacaoApi {
   id: number;
   codigo: string;
+  filiadaDestinoNome?: string;
   ufDestino: string;
   titularCpf: string;
   titularNome: string;
@@ -78,45 +79,21 @@ interface FiliadaApi {
   uf: string;
 }
 
+interface MosiaGrupoFamiliarApi {
+  data?: {
+    chaveUnica?: string;
+  }[];
+}
+
 interface BuscaRapida {
   termo: string;
 }
 
-const estados = [
-  "AC",
-  "AL",
-  "AP",
-  "AM",
-  "BA",
-  "CE",
-  "DF",
-  "ES",
-  "GO",
-  "MA",
-  "MT",
-  "MS",
-  "MG",
-  "PA",
-  "PB",
-  "PR",
-  "PE",
-  "PI",
-  "RJ",
-  "RN",
-  "RS",
-  "RO",
-  "RR",
-  "SC",
-  "SP",
-  "SE",
-  "TO",
-];
-
 const solicitacaoInicial: SolicitacaoReciprocidade = {
-  nome: "VALESKA MACIEL CRUZ",
-  cpf: "053.639.964-64",
+  nome: "",
+  cpf: "",
   dependentes: [],
-  estadoSolicitante: "PB",
+  estadoSolicitante: "",
   destinos: [{ id: 1, estado: "" }],
   dataIda: "",
   dataVolta: "",
@@ -126,12 +103,8 @@ const buscaInicial: BuscaRapida = {
   termo: "",
 };
 
-const passos = [
-  "Beneficiário",
-  "Dependentes",
-  "Estados",
-  "Período",
-];
+const passos = ["Pessoas", "Estados", "Periodo"];
+const itensPorPagina = 5;
 
 function mascararCpf(cpf: string) {
   const numeros = cpf.replace(/\D/g, "");
@@ -177,6 +150,7 @@ function normalizarSolicitacaoApi(
     cpf: item.titularCpf,
     ufSolicitante,
     destinos: [item.ufDestino],
+    filiadaDestinoNome: item.filiadaDestinoNome || "",
     dataIda: item.dataInicio,
     dataVolta: item.dataFim,
     pessoas: 1 + (item.dependentes?.length ?? 0),
@@ -199,16 +173,17 @@ export default function Reciprocidade() {
   >([]);
   const [filiadasDestino, setFiliadasDestino] = useState<FiliadaApi[]>([]);
   const [carregandoFiliadas, setCarregandoFiliadas] = useState(true);
+  const [mensagemBeneficiario, setMensagemBeneficiario] = useState("");
   const [dependenteSelecionadoCpf, setDependenteSelecionadoCpf] = useState("");
+  const [paginaAtual, setPaginaAtual] = useState(1);
   const [cardsVisiveis, setCardsVisiveis] = useState<Set<number>>(new Set());
   const [codigoAberto, setCodigoAberto] = useState<number | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
   const podeAvancar =
     passoAtual === 0 ||
-    passoAtual === 1 ||
-    (passoAtual === 2 && solicitacao.destinos[0]?.estado.trim()) ||
-    (passoAtual === 3 && solicitacao.dataIda && solicitacao.dataVolta);
+    (passoAtual === 1 && solicitacao.destinos[0]?.estado.trim()) ||
+    (passoAtual === 2 && solicitacao.dataIda && solicitacao.dataVolta);
   const solicitacoesVisiveis = ordenarSolicitacoes(
     solicitacoes.filter((item) => {
       const termo = busca.termo.trim().toLowerCase();
@@ -235,93 +210,204 @@ export default function Reciprocidade() {
       );
     })
   );
-  const idsVisiveis = solicitacoesVisiveis.map((item) => item.id).join(",");
+  const totalPaginas = Math.max(
+    1,
+    Math.ceil(solicitacoesVisiveis.length / itensPorPagina)
+  );
+  const inicioPagina = (paginaAtual - 1) * itensPorPagina;
+  const solicitacoesPaginadas = solicitacoesVisiveis.slice(
+    inicioPagina,
+    inicioPagina + itensPorPagina
+  );
+  const pessoasDisponiveis = [
+    ...(solicitacao.nome && solicitacao.cpf
+      ? [{ nome: solicitacao.nome, cpf: solicitacao.cpf }]
+      : []),
+    ...dependentesDisponiveis,
+  ].filter(
+    (pessoa, index, lista) =>
+      lista.findIndex(
+        (item) =>
+          item.cpf.replace(/\D/g, "") === pessoa.cpf.replace(/\D/g, "")
+      ) === index
+  );
+  const pessoasParaSelecionar = pessoasDisponiveis.filter(
+    (pessoa) =>
+      !solicitacao.dependentes.some(
+        (selecionado) =>
+          selecionado.cpf.replace(/\D/g, "") ===
+          pessoa.cpf.replace(/\D/g, "")
+      )
+  );
+  const idsVisiveis = solicitacoesPaginadas.map((item) => item.id).join(",");
 
-  useEffect(() => {
-    async function carregarDadosDoTitular() {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const chavePasse =
-          params.get("chavePasse") ||
-          params.get("cpf") ||
-          process.env.NEXT_PUBLIC_CHAVE_UNICA ||
-          "";
+  const resolverCpfBeneficiario = useCallback(async () => {
+    const params = new URLSearchParams(window.location.search);
+    const cpfUrl = params.get("cpf")?.replace(/\D/g, "") || "";
+    const chavePasse =
+      params.get("chavePasse") || params.get("chavepasse") || "";
+    const devCpf =
+      process.env.NEXT_PUBLIC_CHAVE_UNICA?.replace(/\D/g, "") || "";
 
-        if (!chavePasse) {
-          setSolicitacoes([]);
-          return;
-        }
+    if (devCpf) {
+      setMensagemBeneficiario("Usando CPF de desenvolvimento do .env.");
+      return devCpf;
+    }
 
-        setCpfTitular(chavePasse.replace(/\D/g, ""));
+    if (cpfUrl) {
+      setMensagemBeneficiario("Usando CPF informado diretamente na URL.");
+      return cpfUrl;
+    }
 
-        const [resBeneficiario, resSolicitacoes, resFiliadas] = await Promise.all([
-          fetch(
-            `/api/reciprocidade/beneficiario?chavePasse=${encodeURIComponent(
-              chavePasse
-            )}`
-          ),
-          fetch(
-            `/api/reciprocidade/solicitacoes/titular?chavePasse=${encodeURIComponent(
-              chavePasse
-            )}`
-          ),
-          fetch("/api/reciprocidade/filiadas"),
-        ]);
+    if (!chavePasse) {
+      setMensagemBeneficiario(
+        "Nenhuma chavePasse foi informada na URL para localizar o beneficiario."
+      );
+      return "";
+    }
 
-        let ufTitular = "";
+    const chaveFuncionalidade = process.env.NEXT_PUBLIC_CHAVE_FUNCIONALIDADE;
+    const instanciaApp = process.env.NEXT_PUBLIC_INSTANCIA_APP;
+    const tokenMobile = process.env.NEXT_PUBLIC_TOKEN_MOBILE;
 
-        if (resBeneficiario.ok) {
-          const familia = (await resBeneficiario.json()) as BeneficiarioFamiliaApi;
-          setDependentesDisponiveis(familia.dependentes ?? []);
+    if (!chaveFuncionalidade || !instanciaApp || !tokenMobile) {
+      setMensagemBeneficiario(
+        "Configuracao do Mosia incompleta no .env para resolver a chavePasse."
+      );
+      return "";
+    }
 
-          if (familia.titular) {
-            ufTitular = familia.titular.uf || "PB";
-            setSolicitacao((dados) => ({
-              ...dados,
-              nome: familia.titular?.nome || dados.nome,
-              cpf: familia.titular?.cpf || dados.cpf,
-              estadoSolicitante:
-                familia.titular?.uf || dados.estadoSolicitante || "PB",
-            }));
-            setCpfTitular(familia.titular.cpf.replace(/\D/g, ""));
-          }
-        }
+    setMensagemBeneficiario("Consultando Mosia para obter CPF pela chavePasse.");
+
+    const url =
+      `https://api.mosiaomnichannel.com.br/clientes/chavePasse/grupoFamiliar` +
+      `?instanciaApp=${encodeURIComponent(instanciaApp)}` +
+      `&chavePasse=${encodeURIComponent(chavePasse)}` +
+      `&chaveFuncionalidade=${encodeURIComponent(chaveFuncionalidade)}`;
+
+    const response = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: tokenMobile,
+      },
+    });
+
+    if (!response.ok) {
+      setMensagemBeneficiario(
+        "Nao foi possivel obter o CPF a partir da chavePasse."
+      );
+      return "";
+    }
+
+    const result = (await response.json()) as MosiaGrupoFamiliarApi;
+    const cpfMosia = result.data?.[0]?.chaveUnica?.replace(/\D/g, "") || "";
+
+    if (!cpfMosia) {
+      setMensagemBeneficiario(
+        "A resposta do Mosia nao retornou chaveUnica para o beneficiario."
+      );
+      return "";
+    }
+
+    setMensagemBeneficiario("CPF obtido pelo Mosia via chaveUnica.");
+    return cpfMosia;
+  }, []);
+
+  const carregarDadosDoTitular = useCallback(async () => {
+    setCarregandoSolicitacoes(true);
+    setCarregandoDependentes(true);
+    setCarregandoFiliadas(true);
+
+    try {
+      const cpfConsulta = await resolverCpfBeneficiario();
+      const resFiliadasPromise = fetch("/api/reciprocidade/filiadas");
+
+      if (!cpfConsulta) {
+        const resFiliadas = await resFiliadasPromise;
 
         if (resFiliadas.ok) {
           const filiadas = (await resFiliadas.json()) as FiliadaApi[];
           setFiliadasDestino(filiadas);
         }
 
-        if (!resSolicitacoes.ok) {
-          setSolicitacoes([]);
-          return;
-        }
+        setSolicitacoes([]);
+        setDependentesDisponiveis([]);
+        setSolicitacao(solicitacaoInicial);
+        setCpfTitular("");
+        return;
+      }
 
-        const data = (await resSolicitacoes.json()) as SolicitacaoApi[];
-        setSolicitacoes(
-          data.map((item) => normalizarSolicitacaoApi(item, ufTitular))
-        );
+      setCpfTitular(cpfConsulta);
 
-        if (data[0]) {
+      const [resBeneficiario, resSolicitacoes, resFiliadas] = await Promise.all([
+        fetch(
+          `/api/reciprocidade/beneficiario?cpf=${encodeURIComponent(
+            cpfConsulta
+          )}`,
+          { cache: "no-store" }
+        ),
+        fetch(
+          `/api/reciprocidade/solicitacoes/titular/${encodeURIComponent(
+            cpfConsulta
+          )}`,
+          { cache: "no-store" }
+        ),
+        resFiliadasPromise,
+      ]);
+
+      let ufTitular = "";
+
+      if (resBeneficiario.ok) {
+        const familia = (await resBeneficiario.json()) as BeneficiarioFamiliaApi;
+        setDependentesDisponiveis(familia.dependentes ?? []);
+
+        if (familia.titular) {
+          ufTitular = familia.titular.uf || "PB";
           setSolicitacao((dados) => ({
             ...dados,
-            nome: data[0].titularNome || dados.nome,
-            cpf: data[0].titularCpf || dados.cpf,
+            nome: familia.titular?.nome || dados.nome,
+            cpf: familia.titular?.cpf || dados.cpf,
+            estadoSolicitante:
+              familia.titular?.uf || dados.estadoSolicitante || "PB",
           }));
-          setCpfTitular(data[0].titularCpf.replace(/\D/g, ""));
+          setCpfTitular(familia.titular.cpf.replace(/\D/g, ""));
         }
-      } catch (err) {
-        console.error(err);
-        setSolicitacoes([]);
-      } finally {
-        setCarregandoSolicitacoes(false);
-        setCarregandoDependentes(false);
-        setCarregandoFiliadas(false);
       }
-    }
 
+      if (resFiliadas.ok) {
+        const filiadas = (await resFiliadas.json()) as FiliadaApi[];
+        setFiliadasDestino(filiadas);
+      }
+
+      if (resSolicitacoes.ok) {
+        const data = (await resSolicitacoes.json()) as SolicitacaoApi[];
+        const lista = Array.isArray(data) ? data : [];
+
+        setSolicitacoes(
+          lista.map((item) => normalizarSolicitacaoApi(item, ufTitular))
+        );
+      } else {
+        setSolicitacoes([]);
+      }
+    } catch (err) {
+      console.error(err);
+      setSolicitacoes([]);
+    } finally {
+      setCarregandoSolicitacoes(false);
+      setCarregandoDependentes(false);
+      setCarregandoFiliadas(false);
+    }
+  }, [resolverCpfBeneficiario]);
+
+  useEffect(() => {
     carregarDadosDoTitular();
-  }, []);
+  }, [carregarDadosDoTitular]);
+
+  useEffect(() => {
+    if (paginaAtual > totalPaginas) {
+      setPaginaAtual(totalPaginas);
+    }
+  }, [paginaAtual, totalPaginas]);
 
   useEffect(() => {
     if (mostraFormulario) return;
@@ -388,6 +474,7 @@ export default function Reciprocidade() {
 
   function atualizarBusca(valor: string) {
     setBusca({ termo: valor });
+    setPaginaAtual(1);
   }
 
   function alternarCodigo(id: number) {
@@ -398,6 +485,7 @@ export default function Reciprocidade() {
     setMostraFormulario(true);
     setPassoAtual(0);
     setEnviado(false);
+    carregarDadosDoTitular();
   }
 
   function voltarParaAcompanhamento() {
@@ -446,28 +534,44 @@ export default function Reciprocidade() {
       normalizarSolicitacaoApi(data, solicitacao.estadoSolicitante),
       ...lista,
     ]);
+    setSolicitacao((dados) => ({
+      ...solicitacaoInicial,
+      nome: dados.nome,
+      cpf: dados.cpf,
+      estadoSolicitante: dados.estadoSolicitante,
+    }));
+    setDependenteSelecionadoCpf("");
+    setPassoAtual(0);
+    setPaginaAtual(1);
+    setMostraFormulario(false);
     setEnviado(true);
   }
 
-  function adicionarDependenteSelecionado() {
-    const dependente = dependentesDisponiveis.find(
+  function selecionarPessoaSolicitacao(cpfSelecionado: string) {
+    const pessoa = pessoasDisponiveis.find(
       (item) =>
         item.cpf.replace(/\D/g, "") ===
-        dependenteSelecionadoCpf.replace(/\D/g, "")
+        cpfSelecionado.replace(/\D/g, "")
     );
 
-    if (!dependente) return;
+    if (!pessoa) return;
 
     setSolicitacao((dados) => ({
       ...dados,
-      dependentes: [
-        ...dados.dependentes,
-        {
-          id: Date.now(),
-          nome: dependente.nome,
-          cpf: dependente.cpf,
-        },
-      ],
+      dependentes: dados.dependentes.some(
+        (dependente) =>
+          dependente.cpf.replace(/\D/g, "") ===
+          pessoa.cpf.replace(/\D/g, "")
+      )
+        ? dados.dependentes
+        : [
+            ...dados.dependentes,
+            {
+              id: Date.now(),
+              nome: pessoa.nome,
+              cpf: pessoa.cpf,
+            },
+          ],
     }));
     setDependenteSelecionadoCpf("");
     setEnviado(false);
@@ -494,16 +598,6 @@ export default function Reciprocidade() {
   if (!mostraFormulario) {
     return (
       <main className="mx-auto min-h-screen max-w-3xl px-6 py-8">
-        <section className="animate-fade-slide-up mb-6">
-          <h1 className="text-2xl font-extrabold text-slate-950">
-            Formulário de Solicitação
-          </h1>
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            Informe a filiada de destino e o período de ida e volta para
-            registrar a solicitação.
-          </p>
-        </section>
-
         <section
           className="animate-fade-slide-up mb-5"
           style={{ animationDelay: "80ms" }}
@@ -511,12 +605,24 @@ export default function Reciprocidade() {
           <button
             type="button"
             onClick={abrirNovaSolicitacao}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-bold text-white shadow-lg shadow-blue-200/70 transition duration-300 hover:-translate-y-1 hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-300/70 sm:w-auto"
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 text-sm font-bold text-white shadow-lg shadow-brand/20 transition duration-300 hover:-translate-y-1 hover:bg-brand-hover hover:shadow-xl hover:shadow-brand/30 sm:w-auto"
           >
             <FaPlus />
-            Nova solicitação
+            Nova solicitacao
           </button>
         </section>
+
+        {enviado && (
+          <section className="animate-soft-pop mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-5">
+            <h2 className="mb-2 flex items-center gap-2 font-extrabold text-emerald-800">
+              <FaCheckCircle />
+              Solicitacao registrada
+            </h2>
+            <p className="text-sm leading-6 text-emerald-900">
+              A solicitacao foi enviada com sucesso.
+            </p>
+          </section>
+        )}
 
         <section
           className="animate-fade-slide-up space-y-4"
@@ -524,19 +630,19 @@ export default function Reciprocidade() {
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
-              <FaClipboardList className="text-blue-600" />
-              Acompanhe a solicitação
+              <FaClipboardList className="text-brand" />
+              Acompanhe a solicitacao
             </h2>
 
             <label className="w-full space-y-2 sm:max-w-xs">
               <span className="text-sm font-semibold text-slate-700">
-                Busca rápida
+                Busca rapida
               </span>
               <input
                 value={busca.termo}
                 onChange={(event) => atualizarBusca(event.target.value)}
-                placeholder="Código, data ou UF"
-                className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                placeholder="Codigo, data ou UF"
+                className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm text-slate-950 outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft"
               />
             </label>
           </div>
@@ -548,28 +654,28 @@ export default function Reciprocidade() {
             {carregandoSolicitacoes ? (
               <section className="animate-soft-pop rounded-lg border border-slate-200 bg-slate-50 p-5 md:col-span-2">
                 <h3 className="mb-2 font-extrabold text-slate-900">
-                  Carregando solicitações
+                  Carregando solicitacoes
                 </h3>
                 <p className="text-sm leading-6 text-slate-600">
-                  Buscando os códigos vinculados ao CPF desta chave passe.
+                  Buscando os dados vinculados ao beneficiario.
                 </p>
               </section>
             ) : solicitacoesVisiveis.length === 0 ? (
               <section className="animate-soft-pop rounded-lg border border-slate-200 bg-slate-50 p-5 md:col-span-2">
                 <h3 className="mb-2 font-extrabold text-slate-900">
-                  Você ainda não tem solicitações
+                  Voce ainda nao tem solicitacoes
                 </h3>
                 <p className="text-sm leading-6 text-slate-600">
-                  Quando uma solicitação for cadastrada, ela aparecerá nesta
+                  Quando uma solicitacao for cadastrada, ela aparecera nesta
                   listagem para acompanhamento.
                 </p>
               </section>
             ) : (
-              solicitacoesVisiveis.map((item) => (
+              solicitacoesPaginadas.map((item) => (
                 <section
                   key={item.id}
                   data-scroll-card={item.id}
-                  className={`rounded-lg border border-slate-200 bg-slate-50 p-5 shadow-sm transition-all duration-700 ease-out will-change-transform hover:-translate-y-1 hover:border-blue-200 hover:bg-white hover:shadow-xl hover:shadow-blue-100/70 motion-reduce:transform-none motion-reduce:opacity-100 ${
+                  className={`rounded-lg border border-slate-200 bg-slate-50 p-5 shadow-sm transition-all duration-700 ease-out will-change-transform hover:-translate-y-1 hover:border-brand/30 hover:bg-white hover:shadow-xl hover:shadow-brand/15 motion-reduce:transform-none motion-reduce:opacity-100 ${
                     cardsVisiveis.has(item.id)
                       ? "translate-y-0 scale-100 opacity-100 blur-0"
                       : "translate-y-8 scale-[0.97] opacity-0 blur-sm"
@@ -583,12 +689,17 @@ export default function Reciprocidade() {
                   >
                     <span>
                       <strong className="block text-base font-extrabold text-slate-900">
-                        Código {item.codigo || `#${String(item.id).padStart(4, "0")}`}
+                        Codigo {item.codigo || `#${String(item.id).padStart(4, "0")}`}
                       </strong>
                       <span className="mt-2 flex flex-wrap gap-2">
-                        <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                        <span className="inline-flex rounded-full bg-brand-soft px-3 py-1 text-xs font-bold text-brand">
                           Destino: {item.destinos[0]}
+                          {item.filiadaDestinoNome
+                            ? ` - ${item.filiadaDestinoNome}`
+                            : ""}
                         </span>
+                      </span>
+                      <span className="mt-2 flex flex-wrap gap-2">
                         <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
                           Ida: {formatarData(item.dataIda)}
                         </span>
@@ -599,38 +710,52 @@ export default function Reciprocidade() {
                     </span>
 
                     <FaChevronDown
-                      className={`shrink-0 text-blue-600 transition duration-300 ${
+                      className={`shrink-0 text-brand transition duration-300 ${
                         codigoAberto === item.id ? "rotate-180" : ""
                       }`}
                     />
                   </button>
-
-                  <div
-                    className={`grid overflow-hidden transition-all duration-500 ease-out ${
-                      codigoAberto === item.id
-                        ? "mt-4 max-h-64 opacity-100"
-                        : "max-h-0 opacity-0"
-                    }`}
-                  >
-                    <div className="grid gap-x-4 gap-y-2 border-t border-slate-200 pt-4 text-sm leading-6 text-slate-700 sm:grid-cols-2">
-                      <p className="sm:col-span-2">
-                        Pessoa: <strong>{item.pessoa}</strong>
-                      </p>
-                      <p>
-                        UF solicitante: <strong>{item.ufSolicitante || "-"}</strong>
-                      </p>
-                      <p className="sm:col-span-2">
-                        Pessoas: <strong>{item.pessoas}</strong>
-                      </p>
-                    </div>
-                  </div>
                 </section>
               ))
             )}
           </div>
 
+          {solicitacoesVisiveis.length > itensPorPagina && (
+            <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-semibold text-slate-600">
+                Pagina {paginaAtual} de {totalPaginas}
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPaginaAtual((pagina) => Math.max(1, pagina - 1))
+                  }
+                  disabled={paginaAtual === 1}
+                  className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent sm:flex-none"
+                >
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPaginaAtual((pagina) =>
+                      Math.min(totalPaginas, pagina + 1)
+                    )
+                  }
+                  disabled={paginaAtual === totalPaginas}
+                  className="inline-flex h-10 flex-1 items-center justify-center rounded-lg bg-brand px-4 text-sm font-bold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-slate-300 sm:flex-none"
+                >
+                  Proxima
+                </button>
+              </div>
+            </div>
+          )}
+
           <p className="text-sm text-slate-500">
-            Mostrando {solicitacoesVisiveis.length} solicitações no feed
+            Mostrando {solicitacoesPaginadas.length} de{" "}
+            {solicitacoesVisiveis.length} solicitacoes
           </p>
         </section>
       </main>
@@ -643,25 +768,25 @@ export default function Reciprocidade() {
         <button
           type="button"
           onClick={voltarParaAcompanhamento}
-          className="mb-5 text-sm font-bold text-blue-700 transition hover:text-blue-800"
+          className="mb-5 text-sm font-bold text-brand transition hover:text-brand-hover"
         >
           Voltar para acompanhamento
         </button>
 
         <h1 className="text-2xl font-extrabold text-slate-950">
-          Formulário de Solicitação
+          Formulario de Solicitacao
         </h1>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Preencha uma etapa por vez para cadastrar a solicitação.
+          Preencha uma etapa por vez para cadastrar a solicitacao.
         </p>
       </section>
 
-      <div className="mb-8 grid grid-cols-4 gap-2">
+      <div className="mb-8 grid grid-cols-3 gap-2">
         {passos.map((passo, index) => (
           <div
             key={passo}
             className={`h-2 rounded-full ${
-              index <= passoAtual ? "bg-blue-600" : "bg-slate-200"
+              index <= passoAtual ? "bg-brand" : "bg-slate-200"
             }`}
             title={passo}
           />
@@ -672,111 +797,57 @@ export default function Reciprocidade() {
         {passoAtual === 0 && (
           <section className="page-turn space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
-              <FaUser className="text-blue-600" />
-              Dados do beneficiário
+              <FaUser className="text-brand" />
+              Pessoas da solicitacao
             </h2>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Nome</span>
-                <input
-                  value={solicitacao.nome}
-                  readOnly
-                  className="h-12 w-full rounded-lg border border-slate-300 bg-slate-50 px-4 text-base text-slate-950 outline-none"
-                  required
-                />
-              </label>
-
-              <label className="space-y-2">
-                <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                  <FaIdCard className="text-slate-500" />
-                  CPF
-                </span>
-                <input
-                  value={mascararCpf(solicitacao.cpf)}
-                  readOnly
-                  className="h-12 w-full rounded-lg border border-slate-300 bg-slate-50 px-4 text-base text-slate-950 outline-none"
-                  required
-                />
-              </label>
-            </div>
-          </section>
-        )}
-
-        {passoAtual === 1 && (
-          <section className="page-turn space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
-              <FaUser className="text-blue-600" />
-              Dependentes
-            </h2>
-
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+            <div className="grid gap-3">
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">
-                  Selecionar dependente
+                  Selecionar pessoa
                 </span>
                 <select
                   value={dependenteSelecionadoCpf}
                   onChange={(event) =>
-                    setDependenteSelecionadoCpf(event.target.value)
+                    selecionarPessoaSolicitacao(event.target.value)
                   }
                   disabled={carregandoDependentes}
-                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-base text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-base text-slate-950 outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                 >
                   <option value="">
                     {carregandoDependentes
-                      ? "Carregando dependentes"
+                      ? "Carregando pessoas"
                       : "Selecione"}
                   </option>
-                  {dependentesDisponiveis
-                    .filter(
-                      (dependente) =>
-                        !solicitacao.dependentes.some(
-                          (selecionado) =>
-                            selecionado.cpf.replace(/\D/g, "") ===
-                            dependente.cpf.replace(/\D/g, "")
-                        )
-                    )
-                    .map((dependente) => (
-                      <option key={dependente.cpf} value={dependente.cpf}>
-                        {dependente.nome} - CPF {mascararCpf(dependente.cpf)}
-                      </option>
-                    ))}
+                  {pessoasParaSelecionar.map((pessoa) => (
+                    <option key={pessoa.cpf} value={pessoa.cpf}>
+                      {pessoa.nome}
+                    </option>
+                  ))}
                 </select>
               </label>
-
-              <button
-                type="button"
-                onClick={adicionarDependenteSelecionado}
-                disabled={!dependenteSelecionadoCpf}
-                className="inline-flex h-12 items-center justify-center gap-2 self-end rounded-lg border border-blue-200 px-4 text-sm font-bold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 disabled:hover:bg-transparent"
-              >
-                <FaPlus />
-                Adicionar
-              </button>
             </div>
 
-            {!carregandoDependentes &&
-              dependentesDisponiveis.length === 0 && (
-                <p className="text-sm text-slate-500">
-                  Nenhum dependente encontrado para este titular.
-                </p>
-              )}
+            {!carregandoDependentes && pessoasDisponiveis.length === 0 && (
+              <p className="text-sm text-slate-500">
+                Nenhuma pessoa encontrada para este titular.
+              </p>
+            )}
 
             {solicitacao.dependentes.length === 0 && (
               <p className="text-sm text-slate-500">
-                Nenhum dependente selecionado.
+                Nenhuma pessoa selecionada.
               </p>
             )}
 
             {solicitacao.dependentes.map((dependente, index) => (
               <div
                 key={dependente.id}
-                className="animate-soft-pop space-y-4 rounded-lg border border-slate-200 p-4 transition hover:border-blue-200 hover:shadow-sm"
+                className="animate-soft-pop space-y-4 rounded-lg border border-slate-200 p-4 transition hover:border-brand/30 hover:shadow-sm"
               >
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-extrabold text-slate-800">
-                    Dependente {index + 1}
+                    Pessoa {index + 1}
                   </h3>
 
                   <button
@@ -789,12 +860,9 @@ export default function Reciprocidade() {
                   </button>
                 </div>
 
-                <div className="grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
+                <div className="text-sm text-slate-700">
                   <p>
                     Nome: <strong>{dependente.nome}</strong>
-                  </p>
-                  <p>
-                    CPF: <strong>{mascararCpf(dependente.cpf)}</strong>
                   </p>
                 </div>
               </div>
@@ -802,37 +870,17 @@ export default function Reciprocidade() {
           </section>
         )}
 
-        {passoAtual === 2 && (
+        {passoAtual === 1 && (
           <section className="page-turn space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
-              <FaMapMarkerAlt className="text-blue-600" />
-              Destino da solicitação
+              <FaMapMarkerAlt className="text-brand" />
+              Destino da solicitacao
             </h2>
 
             <div className="space-y-3">
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-slate-700">
-                  UF solicitante
-                </span>
-                <select
-                  value={solicitacao.estadoSolicitante || ""}
-                  onChange={(event) =>
-                    atualizarCampo("estadoSolicitante", event.target.value)
-                  }
-                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-base text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="">Selecione</option>
-                  {estados.map((estado) => (
-                    <option key={estado} value={estado}>
-                      {estado}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">
-                  Filiada de destino
+                  UF - Filiada de destino
                 </span>
                 <select
                   value={solicitacao.destinos[0]?.estado ?? ""}
@@ -843,7 +891,7 @@ export default function Reciprocidade() {
                     )
                   }
                   disabled={carregandoFiliadas}
-                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-base text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-base text-slate-950 outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                   required
                 >
                   <option value="">
@@ -853,26 +901,20 @@ export default function Reciprocidade() {
                   </option>
                   {filiadasDestino.map((filiada) => (
                     <option key={filiada.id} value={filiada.uf}>
-                      {filiada.nome} - {filiada.uf}
+                      {filiada.uf} - {filiada.nome}
                     </option>
                   ))}
                 </select>
               </label>
-
-              {!carregandoFiliadas && filiadasDestino.length === 0 && (
-                <p className="text-sm text-slate-500">
-                  Nenhuma filiada de destino encontrada.
-                </p>
-              )}
             </div>
           </section>
         )}
 
-        {passoAtual === 3 && (
+        {passoAtual === 2 && (
           <section className="page-turn space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
-              <FaCalendarAlt className="text-blue-600" />
-              Período da viagem
+              <FaCalendarAlt className="text-brand" />
+              Periodo da viagem
             </h2>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -886,7 +928,7 @@ export default function Reciprocidade() {
                   onChange={(event) =>
                     atualizarCampo("dataIda", event.target.value)
                   }
-                  className="h-12 w-full rounded-lg border border-slate-300 px-4 text-base text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="h-12 w-full rounded-lg border border-slate-300 px-4 text-base text-slate-950 outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft"
                   required
                 />
               </label>
@@ -902,7 +944,7 @@ export default function Reciprocidade() {
                   onChange={(event) =>
                     atualizarCampo("dataVolta", event.target.value)
                   }
-                  className="h-12 w-full rounded-lg border border-slate-300 px-4 text-base text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="h-12 w-full rounded-lg border border-slate-300 px-4 text-base text-slate-950 outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft"
                   required
                 />
               </label>
@@ -925,43 +967,22 @@ export default function Reciprocidade() {
               type="button"
               onClick={avancarPasso}
               disabled={!podeAvancar}
-              className="inline-flex h-12 items-center justify-center rounded-lg bg-blue-600 px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+              className="inline-flex h-12 items-center justify-center rounded-lg bg-brand px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-brand-hover hover:shadow-md disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:translate-y-0 disabled:hover:shadow-none"
             >
-              Avançar
+              Avancar
             </button>
           ) : (
             <button
               type="submit"
               disabled={!podeAvancar}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-brand-hover hover:shadow-md disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:translate-y-0 disabled:hover:shadow-none"
             >
               <FaPaperPlane />
-              Enviar solicitação
+              Enviar solicitacao
             </button>
           )}
         </div>
       </form>
-
-      {enviado && (
-        <section className="animate-soft-pop mt-8 rounded-lg border border-emerald-200 bg-emerald-50 p-5">
-          <h2 className="mb-3 flex items-center gap-2 font-extrabold text-emerald-800">
-            <FaCheckCircle />
-            Solicitação registrada
-          </h2>
-          <p className="text-sm leading-6 text-emerald-900">
-            {solicitacao.nome} solicitou reciprocidade da UF{" "}
-            <strong>{solicitacao.estadoSolicitante || "-"}</strong> para a
-            filiada de destino <strong>{solicitacao.destinos[0]?.estado}</strong>
-            , no período de{" "}
-            <strong>{formatarData(solicitacao.dataIda)}</strong> até{" "}
-            <strong>{formatarData(solicitacao.dataVolta)}</strong>.
-            {solicitacao.dependentes.length > 0 &&
-              ` Dependentes: ${solicitacao.dependentes
-                .map((dependente) => `${dependente.nome} - CPF ${dependente.cpf}`)
-                .join("; ")}.`}
-          </p>
-        </section>
-      )}
     </main>
   );
 }

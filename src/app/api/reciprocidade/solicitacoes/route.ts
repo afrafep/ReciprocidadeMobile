@@ -4,13 +4,17 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const url = `${process.env.API_BASE_URL}/api/reciprocidade/solicitacoes`;
+    const headers = {
+      "Content-Type": "application/json",
+      ...(process.env.ACCESS_TOKEN
+        ? { "X-Access-Token": process.env.ACCESS_TOKEN }
+        : {}),
+    };
     const res = await fetch(
       url,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify(body),
       }
     );

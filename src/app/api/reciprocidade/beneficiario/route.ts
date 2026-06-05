@@ -3,21 +3,24 @@ import { NextResponse } from "next/server";
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const chavePasse = searchParams.get("chavePasse")?.replace(/\D/g, "");
-    const cpf =
-      searchParams.get("cpf")?.replace(/\D/g, "") ||
-      chavePasse ||
-      process.env.NEXT_PUBLIC_CHAVE_UNICA?.replace(/\D/g, "");
+    const cpf = searchParams.get("cpf")?.replace(/\D/g, "");
 
     if (!cpf) {
       return NextResponse.json(
-        { error: "CPF ou chavePasse não informado" },
+        { error: "CPF nao informado" },
         { status: 400 }
       );
     }
 
+    const headers = process.env.ACCESS_TOKEN
+      ? { "X-Access-Token": process.env.ACCESS_TOKEN }
+      : undefined;
     const resBenef = await fetch(
-      `${process.env.API_BASE_URL}/api/oracle/beneficiarios/titular/${cpf}/dependentes`
+      `${process.env.API_BASE_URL}/api/oracle/beneficiarios/titular/${cpf}/dependentes`,
+      {
+        cache: "no-store",
+        headers,
+      }
     );
 
     if (resBenef.status === 404) {
