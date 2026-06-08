@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Reciprocidade",
-  description: "Consulta de reciprocidade do beneficiario",
+  description: "Consulta de reciprocidade do beneficiário",
 };
 
 export default function RootLayout({
