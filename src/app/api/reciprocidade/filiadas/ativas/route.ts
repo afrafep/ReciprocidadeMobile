@@ -14,7 +14,7 @@ export async function GET() {
     if (!res.ok) {
       return NextResponse.json(
         {
-          error: "Erro ao consultar filiadas",
+          error: "Erro ao consultar filiadas ativas",
           endpoint: url,
           status: res.status,
         },
