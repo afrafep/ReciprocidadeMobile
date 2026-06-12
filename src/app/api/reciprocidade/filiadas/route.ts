@@ -6,7 +6,7 @@ export async function GET() {
       ? { "X-Access-Token": process.env.ACCESS_TOKEN }
       : undefined;
     const res = await fetch(
-      `${process.env.API_BASE_URL}/api/reciprocidade/filiadas`,
+      `${process.env.API_BASE_URL}/api/reciprocidade/filiadas/ativas`,
       {
         cache: "no-store",
         headers,

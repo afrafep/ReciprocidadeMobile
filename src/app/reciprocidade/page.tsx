@@ -320,7 +320,7 @@ export default function Reciprocidade() {
 
     try {
       const cpfConsulta = await resolverCpfBeneficiario();
-      const resFiliadasPromise = fetch("/api/reciprocidade/filiadas");
+      const resFiliadasPromise = fetch("/api/reciprocidade/filiadas/ativas");
 
       if (!cpfConsulta) {
         const resFiliadas = await resFiliadasPromise;
