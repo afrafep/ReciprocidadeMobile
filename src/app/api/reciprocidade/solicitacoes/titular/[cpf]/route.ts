@@ -18,7 +18,7 @@ export async function GET(_req: Request, { params }: Params) {
 
     if (!res.ok) {
       return NextResponse.json(
-        { error: "Erro ao consultar solicitacoes do titular" },
+        { error: "Erro ao consultar solicitações do titular" },
         { status: res.status }
       );
     }

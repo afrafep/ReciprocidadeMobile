@@ -7,7 +7,7 @@ export async function GET(req: Request) {
 
     if (!cpf) {
       return NextResponse.json(
-        { error: "CPF nao informado" },
+        { error: "CPF não informado" },
         { status: 400 }
       );
     }

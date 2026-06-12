@@ -103,7 +103,7 @@ const buscaInicial: BuscaRapida = {
   termo: "",
 };
 
-const passos = ["Pessoas", "Estados", "Periodo"];
+const passos = ["Pessoas", "Estados", "Período"];
 const itensPorPagina = 5;
 
 function mascararCpf(cpf: string) {
@@ -261,7 +261,7 @@ export default function Reciprocidade() {
 
     if (!chavePasse) {
       setMensagemBeneficiario(
-        "Nenhuma chavePasse foi informada na URL para localizar o beneficiario."
+        "Nenhuma chavePasse foi informada na URL para localizar o beneficiário."
       );
       return "";
     }
@@ -272,7 +272,7 @@ export default function Reciprocidade() {
 
     if (!chaveFuncionalidade || !instanciaApp || !tokenMobile) {
       setMensagemBeneficiario(
-        "Configuracao do Mosia incompleta no .env para resolver a chavePasse."
+        "Configuração do Mosia incompleta no .env para resolver a chavePasse."
       );
       return "";
     }
@@ -294,7 +294,7 @@ export default function Reciprocidade() {
 
     if (!response.ok) {
       setMensagemBeneficiario(
-        "Nao foi possivel obter o CPF a partir da chavePasse."
+        "Não foi possível obter o CPF a partir da chavePasse."
       );
       return "";
     }
@@ -304,7 +304,7 @@ export default function Reciprocidade() {
 
     if (!cpfMosia) {
       setMensagemBeneficiario(
-        "A resposta do Mosia nao retornou chaveUnica para o beneficiario."
+        "A resposta do Mosia não retornou chaveUnica para o beneficiário."
       );
       return "";
     }
@@ -608,7 +608,7 @@ export default function Reciprocidade() {
             className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 text-sm font-bold text-white shadow-lg shadow-brand/20 transition duration-300 hover:-translate-y-1 hover:bg-brand-hover hover:shadow-xl hover:shadow-brand/30 sm:w-auto"
           >
             <FaPlus />
-            Nova solicitacao
+            Nova solicitação
           </button>
         </section>
 
@@ -616,10 +616,10 @@ export default function Reciprocidade() {
           <section className="animate-soft-pop mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-5">
             <h2 className="mb-2 flex items-center gap-2 font-extrabold text-emerald-800">
               <FaCheckCircle />
-              Solicitacao registrada
+              Solicitação registrada
             </h2>
             <p className="text-sm leading-6 text-emerald-900">
-              A solicitacao foi enviada com sucesso.
+              A solicitação foi enviada com sucesso.
             </p>
           </section>
         )}
@@ -631,17 +631,17 @@ export default function Reciprocidade() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
               <FaClipboardList className="text-brand" />
-              Acompanhe a solicitacao
+              Acompanhe a solicitação
             </h2>
 
             <label className="w-full space-y-2 sm:max-w-xs">
               <span className="text-sm font-semibold text-slate-700">
-                Busca rapida
+                Busca rápida
               </span>
               <input
                 value={busca.termo}
                 onChange={(event) => atualizarBusca(event.target.value)}
-                placeholder="Codigo, data ou UF"
+                placeholder="Código, data ou UF"
                 className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm text-slate-950 outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft"
               />
             </label>
@@ -654,19 +654,19 @@ export default function Reciprocidade() {
             {carregandoSolicitacoes ? (
               <section className="animate-soft-pop rounded-lg border border-slate-200 bg-slate-50 p-5 md:col-span-2">
                 <h3 className="mb-2 font-extrabold text-slate-900">
-                  Carregando solicitacoes
+                  Carregando solicitações
                 </h3>
                 <p className="text-sm leading-6 text-slate-600">
-                  Buscando os dados vinculados ao beneficiario.
+                  Buscando os dados vinculados ao beneficiário.
                 </p>
               </section>
             ) : solicitacoesVisiveis.length === 0 ? (
               <section className="animate-soft-pop rounded-lg border border-slate-200 bg-slate-50 p-5 md:col-span-2">
                 <h3 className="mb-2 font-extrabold text-slate-900">
-                  Voce ainda nao tem solicitacoes
+                  Você ainda não tem solicitações
                 </h3>
                 <p className="text-sm leading-6 text-slate-600">
-                  Quando uma solicitacao for cadastrada, ela aparecera nesta
+                  Quando uma solicitação for cadastrada, ela aparecerá nesta
                   listagem para acompanhamento.
                 </p>
               </section>
@@ -689,7 +689,7 @@ export default function Reciprocidade() {
                   >
                     <span>
                       <strong className="block text-base font-extrabold text-slate-900">
-                        Codigo {item.codigo || `#${String(item.id).padStart(4, "0")}`}
+                        Código {item.codigo || `#${String(item.id).padStart(4, "0")}`}
                       </strong>
                       <span className="mt-2 flex flex-wrap gap-2">
                         <span className="inline-flex rounded-full bg-brand-soft px-3 py-1 text-xs font-bold text-brand">
@@ -723,7 +723,7 @@ export default function Reciprocidade() {
           {solicitacoesVisiveis.length > itensPorPagina && (
             <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm font-semibold text-slate-600">
-                Pagina {paginaAtual} de {totalPaginas}
+                Página {paginaAtual} de {totalPaginas}
               </p>
 
               <div className="flex gap-2">
@@ -747,7 +747,7 @@ export default function Reciprocidade() {
                   disabled={paginaAtual === totalPaginas}
                   className="inline-flex h-10 flex-1 items-center justify-center rounded-lg bg-brand px-4 text-sm font-bold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-slate-300 sm:flex-none"
                 >
-                  Proxima
+                  Próxima
                 </button>
               </div>
             </div>
@@ -755,7 +755,7 @@ export default function Reciprocidade() {
 
           <p className="text-sm text-slate-500">
             Mostrando {solicitacoesPaginadas.length} de{" "}
-            {solicitacoesVisiveis.length} solicitacoes
+            {solicitacoesVisiveis.length} solicitações
           </p>
         </section>
       </main>
@@ -774,10 +774,10 @@ export default function Reciprocidade() {
         </button>
 
         <h1 className="text-2xl font-extrabold text-slate-950">
-          Formulario de Solicitacao
+          Formulário de Solicitação
         </h1>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Preencha uma etapa por vez para cadastrar a solicitacao.
+          Preencha uma etapa por vez para cadastrar a solicitação.
         </p>
       </section>
 
@@ -798,7 +798,7 @@ export default function Reciprocidade() {
           <section className="page-turn space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
               <FaUser className="text-brand" />
-              Pessoas da solicitacao
+              Pessoas da solicitação
             </h2>
 
             <div className="grid gap-3">
@@ -874,7 +874,7 @@ export default function Reciprocidade() {
           <section className="page-turn space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
               <FaMapMarkerAlt className="text-brand" />
-              Destino da solicitacao
+              Destino da solicitação
             </h2>
 
             <div className="space-y-3">
@@ -914,7 +914,7 @@ export default function Reciprocidade() {
           <section className="page-turn space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
               <FaCalendarAlt className="text-brand" />
-              Periodo da viagem
+              Período da viagem
             </h2>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -969,7 +969,7 @@ export default function Reciprocidade() {
               disabled={!podeAvancar}
               className="inline-flex h-12 items-center justify-center rounded-lg bg-brand px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-brand-hover hover:shadow-md disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:translate-y-0 disabled:hover:shadow-none"
             >
-              Avancar
+              Avançar
             </button>
           ) : (
             <button
@@ -978,7 +978,7 @@ export default function Reciprocidade() {
               className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-brand-hover hover:shadow-md disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:translate-y-0 disabled:hover:shadow-none"
             >
               <FaPaperPlane />
-              Enviar solicitacao
+              Enviar solicitação
             </button>
           )}
         </div>
