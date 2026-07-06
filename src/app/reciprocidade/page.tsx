@@ -9,6 +9,7 @@ import {
   FaMapMarkerAlt,
   FaPaperPlane,
   FaPlus,
+  FaSpinner,
   FaTrash,
   FaUser,
 } from "react-icons/fa";
@@ -612,6 +613,22 @@ export default function Reciprocidade() {
   }
 
   if (!mostraFormulario) {
+    if (carregandoSolicitacoes) {
+      return (
+        <main className="mx-auto flex min-h-screen max-w-3xl items-center justify-center px-6 py-8">
+          <section className="animate-soft-pop flex flex-col items-center rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
+            <FaSpinner className="mb-4 animate-spin text-3xl text-brand" />
+            <h2 className="mb-2 font-extrabold text-slate-900">
+              Consultando autorização
+            </h2>
+            <p className="text-sm leading-6 text-slate-600">
+              Aguarde enquanto verificamos o CPF do beneficiário.
+            </p>
+          </section>
+        </main>
+      );
+    }
+
     if (mensagemAcesso) {
       return (
         <main className="mx-auto min-h-screen max-w-3xl px-6 py-8">
