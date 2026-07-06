@@ -105,6 +105,8 @@ const buscaInicial: BuscaRapida = {
 
 const passos = ["Pessoas", "Estados", "Período"];
 const itensPorPagina = 5;
+const mensagemTitularNaoEncontrado =
+  "Funcionalidade exclusiva para TITULARES DO PLANO AFRAFEP SAUDE PLUS NACIONAL.";
 
 function mascararCpf(cpf: string) {
   const numeros = cpf.replace(/\D/g, "");
@@ -174,6 +176,7 @@ export default function Reciprocidade() {
   const [filiadasDestino, setFiliadasDestino] = useState<FiliadaApi[]>([]);
   const [carregandoFiliadas, setCarregandoFiliadas] = useState(true);
   const [mensagemBeneficiario, setMensagemBeneficiario] = useState("");
+  const [mensagemAcesso, setMensagemAcesso] = useState("");
   const [dependenteSelecionadoCpf, setDependenteSelecionadoCpf] = useState("");
   const [paginaAtual, setPaginaAtual] = useState(1);
   const [cardsVisiveis, setCardsVisiveis] = useState<Set<number>>(new Set());
@@ -317,6 +320,7 @@ export default function Reciprocidade() {
     setCarregandoSolicitacoes(true);
     setCarregandoDependentes(true);
     setCarregandoFiliadas(true);
+    setMensagemAcesso("");
 
     try {
       const cpfConsulta = await resolverCpfBeneficiario();
@@ -356,12 +360,14 @@ export default function Reciprocidade() {
       ]);
 
       let ufTitular = "";
+      let titularEncontrado = false;
 
       if (resBeneficiario.ok) {
         const familia = (await resBeneficiario.json()) as BeneficiarioFamiliaApi;
         setDependentesDisponiveis(familia.dependentes ?? []);
 
         if (familia.titular) {
+          titularEncontrado = true;
           ufTitular = familia.titular.uf || "PB";
           setSolicitacao((dados) => ({
             ...dados,
@@ -371,7 +377,15 @@ export default function Reciprocidade() {
               familia.titular?.uf || dados.estadoSolicitante || "PB",
           }));
           setCpfTitular(familia.titular.cpf.replace(/\D/g, ""));
+        } else {
+          setMensagemAcesso(mensagemTitularNaoEncontrado);
+          setSolicitacao(solicitacaoInicial);
+          setDependentesDisponiveis([]);
         }
+      } else if (resBeneficiario.status === 404) {
+        setMensagemAcesso(mensagemTitularNaoEncontrado);
+        setSolicitacao(solicitacaoInicial);
+        setDependentesDisponiveis([]);
       }
 
       if (resFiliadas.ok) {
@@ -379,7 +393,7 @@ export default function Reciprocidade() {
         setFiliadasDestino(filiadas);
       }
 
-      if (resSolicitacoes.ok) {
+      if (titularEncontrado && resSolicitacoes.ok) {
         const data = (await resSolicitacoes.json()) as SolicitacaoApi[];
         const lista = Array.isArray(data) ? data : [];
 
@@ -482,6 +496,8 @@ export default function Reciprocidade() {
   }
 
   function abrirNovaSolicitacao() {
+    if (mensagemAcesso) return;
+
     setMostraFormulario(true);
     setPassoAtual(0);
     setEnviado(false);
@@ -596,6 +612,21 @@ export default function Reciprocidade() {
   }
 
   if (!mostraFormulario) {
+    if (mensagemAcesso) {
+      return (
+        <main className="mx-auto min-h-screen max-w-3xl px-6 py-8">
+          <section className="animate-soft-pop rounded-lg border border-amber-200 bg-amber-50 p-5">
+            <h2 className="mb-2 font-extrabold text-amber-900">
+              Não autorizado
+            </h2>
+            <p className="text-sm font-bold uppercase leading-6 text-amber-950">
+              {mensagemAcesso}
+            </p>
+          </section>
+        </main>
+      );
+    }
+
     return (
       <main className="mx-auto min-h-screen max-w-3xl px-6 py-8">
         <section
@@ -605,7 +636,8 @@ export default function Reciprocidade() {
           <button
             type="button"
             onClick={abrirNovaSolicitacao}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 text-sm font-bold text-white shadow-lg shadow-brand/20 transition duration-300 hover:-translate-y-1 hover:bg-brand-hover hover:shadow-xl hover:shadow-brand/30 sm:w-auto"
+            disabled={Boolean(mensagemAcesso)}
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 text-sm font-bold text-white shadow-lg shadow-brand/20 transition duration-300 hover:-translate-y-1 hover:bg-brand-hover hover:shadow-xl hover:shadow-brand/30 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none disabled:hover:translate-y-0 sm:w-auto"
           >
             <FaPlus />
             Nova solicitação
