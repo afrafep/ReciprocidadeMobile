@@ -1,36 +1,20 @@
 import { NextResponse } from "next/server";
+import { apiBackendUrl, authorizationBeneficiario } from "@/lib/reciprocidadeBackend";
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(req.url);
-    const cpf = searchParams.get("cpf")?.replace(/\D/g, "");
-
-    if (!cpf) {
-      return NextResponse.json(
-        { error: "CPF não informado" },
-        { status: 400 }
-      );
+    const authorization = await authorizationBeneficiario();
+    if (!authorization) {
+      return NextResponse.json({ error: "Sessao ausente." }, { status: 401 });
     }
-
-    const headers = process.env.ACCESS_TOKEN
-      ? { "X-Access-Token": process.env.ACCESS_TOKEN }
-      : undefined;
-    const resBenef = await fetch(
-      `${process.env.API_BASE_URL}/api/oracle/beneficiarios/titular/${cpf}/dependentes`,
-      {
-        cache: "no-store",
-        headers,
-      }
-    );
-
-    if (resBenef.status === 404) {
-      return NextResponse.json({}, { status: 404 });
-    }
-
-    const data = await resBenef.json();
-    return NextResponse.json(data);
-  } catch (err) {
-    console.error(err);
+    const response = await fetch(apiBackendUrl("/api/beneficiarios/familia"), {
+      cache: "no-store",
+      headers: { Authorization: authorization },
+    });
+    const data = await response.json().catch(() => null);
+    return NextResponse.json(data, { status: response.status });
+  } catch (error) {
+    console.error("Erro ao consultar familia do beneficiario", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }

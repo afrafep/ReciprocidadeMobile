@@ -1,37 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ReciprocidadeMobile
 
-## Getting Started
+Front Next.js do fluxo de reciprocidade do plano de saude.
 
-First, run the development server:
+## Autenticacao
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+O navegador recebe `chavePasse` na URL e solicita uma sessao ao route handler do Next. Somente o
+servidor Next conhece o token tecnico e a chave de funcionalidade. O backend Java consulta o Mosia,
+valida o titular ativo no Oracle e devolve um JWT curto, armazenado em cookie `HttpOnly`.
+
+As consultas de familia e solicitacoes nao recebem CPF como identidade. Os route handlers usam o
+JWT do cookie no header `Authorization: Bearer`.
+
+## Configuracao
+
+Copie `.env.example` para `.env` e preencha:
+
+```env
+API_BASE_URL=http://localhost:8086/solicitacoes-mobile
+RECIPROCIDADE_FRONT_TOKEN=substituir
+RECIPROCIDADE_CHAVE_FUNCIONALIDADE=substituir
+RECIPROCIDADE_DEV_AUTH_ENABLED=true
+RECIPROCIDADE_DEV_CPF=00000000000
+DEBUG=false
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Todas essas variaveis sao server-side. Nao use prefixo `NEXT_PUBLIC_*` para credenciais, chave de
+funcionalidade ou CPF de desenvolvimento.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Teste local por CPF
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Com o backend no profile `local` ou `dev` e `APP_DEV_AUTH_ENABLED=true`, defina
+`RECIPROCIDADE_DEV_AUTH_ENABLED=true` e `RECIPROCIDADE_DEV_CPF` no front.
+Nesse modo, o route handler chama `/api/auth/desenvolvimento/sessoes`; o Mosia e ignorado, mas o
+CPF ainda precisa pertencer a um titular ativo no Oracle. Em producao, a variavel deve ficar ausente
+e a `chavePasse` volta a ser obrigatoria.
 
-## Learn More
+Alteracoes de `.env` exigem reinicio do servidor Next.
 
+## Console de diagnostico
 
-To learn more about Next.js, take a look at the following resources:
+`DEBUG=true` habilita um console visual no rodape com a `chavePasse`, endpoints do Next e Java,
+payloads, status e corpos das respostas. O painel permite copiar todos os eventos e possui fallback
+para WebViews sem acesso moderno ao clipboard. O token tecnico e o JWT nunca sao exibidos.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Use essa opcao somente temporariamente em teste. Como o console exibe dados funcionais e pessoais,
+mantenha `DEBUG=false` em producao e realize um novo deploy depois de alterar a variavel.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Rotas internas
 
-## Deploy on Vercel
+- `POST /api/reciprocidade/sessao`: abre a sessao Mosia ou local.
+- `DELETE /api/reciprocidade/sessao`: encerra o cookie local.
+- `GET /api/reciprocidade/beneficiario`: consulta a familia autenticada.
+- `GET|POST /api/reciprocidade/solicitacoes`: consulta ou cria solicitacoes autenticadas.
+- `GET /api/reciprocidade/filiadas/ativas`: consulta tecnica das filiadas.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Publicacao
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+O backend novo deve estar disponivel antes deste front. Depois da publicacao e verificacao, rotacione
+qualquer token tecnico que tenha sido anteriormente exposto. Nunca publique o modo local em outro
+profile nem habilite `APP_DEV_AUTH_ENABLED` fora do ambiente controlado.
+
+Build, servidor e testes devem ser executados somente quando autorizados no fluxo do projeto.

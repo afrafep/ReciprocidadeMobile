@@ -80,10 +80,14 @@ interface FiliadaApi {
   uf: string;
 }
 
-interface MosiaGrupoFamiliarApi {
-  data?: {
-    chaveUnica?: string;
-  }[];
+interface SessaoReciprocidadeApi {
+  beneficiario: {
+    cpf: string;
+    nome: string;
+    matricula: string;
+    codigoBeneficiario: string;
+  };
+  modoLocal: boolean;
 }
 
 interface BuscaRapida {
@@ -168,7 +172,6 @@ export default function Reciprocidade() {
   const [solicitacoes, setSolicitacoes] = useState<SolicitacaoCadastrada[]>([]);
   const [busca, setBusca] = useState<BuscaRapida>(buscaInicial);
   const [enviado, setEnviado] = useState(false);
-  const [cpfTitular, setCpfTitular] = useState("");
   const [carregandoSolicitacoes, setCarregandoSolicitacoes] = useState(true);
   const [carregandoDependentes, setCarregandoDependentes] = useState(true);
   const [dependentesDisponiveis, setDependentesDisponiveis] = useState<
@@ -176,7 +179,7 @@ export default function Reciprocidade() {
   >([]);
   const [filiadasDestino, setFiliadasDestino] = useState<FiliadaApi[]>([]);
   const [carregandoFiliadas, setCarregandoFiliadas] = useState(true);
-  const [mensagemBeneficiario, setMensagemBeneficiario] = useState("");
+  const [, setMensagemBeneficiario] = useState("");
   const [mensagemAcesso, setMensagemAcesso] = useState("");
   const [dependenteSelecionadoCpf, setDependenteSelecionadoCpf] = useState("");
   const [paginaAtual, setPaginaAtual] = useState(1);
@@ -245,76 +248,34 @@ export default function Reciprocidade() {
   );
   const idsVisiveis = solicitacoesPaginadas.map((item) => item.id).join(",");
 
-  const resolverCpfBeneficiario = useCallback(async () => {
+  const abrirSessaoBeneficiario = useCallback(async () => {
     const params = new URLSearchParams(window.location.search);
-    const cpfUrl = params.get("cpf")?.replace(/\D/g, "") || "";
     const chavePasse =
       params.get("chavePasse") || params.get("chavepasse") || "";
-    const devCpf =
-      process.env.NEXT_PUBLIC_CHAVE_UNICA?.replace(/\D/g, "") || "";
+    setMensagemBeneficiario("Consultando autorização do beneficiário.");
 
-    if (devCpf) {
-      setMensagemBeneficiario("Usando CPF de desenvolvimento do .env.");
-      return devCpf;
-    }
-
-    if (cpfUrl) {
-      setMensagemBeneficiario("Usando CPF informado diretamente na URL.");
-      return cpfUrl;
-    }
-
-    if (!chavePasse) {
-      setMensagemBeneficiario(
-        "Nenhuma chavePasse foi informada na URL para localizar o beneficiário."
-      );
-      return "";
-    }
-
-    const chaveFuncionalidade = process.env.NEXT_PUBLIC_CHAVE_FUNCIONALIDADE;
-    const instanciaApp = process.env.NEXT_PUBLIC_INSTANCIA_APP;
-    const tokenMobile = process.env.NEXT_PUBLIC_TOKEN_MOBILE;
-
-    if (!chaveFuncionalidade || !instanciaApp || !tokenMobile) {
-      setMensagemBeneficiario(
-        "Configuração do Mosia incompleta no .env para resolver a chavePasse."
-      );
-      return "";
-    }
-
-    setMensagemBeneficiario("Consultando Mosia para obter CPF pela chavePasse.");
-
-    const url =
-      `https://api.mosiaomnichannel.com.br/clientes/chavePasse/grupoFamiliar` +
-      `?instanciaApp=${encodeURIComponent(instanciaApp)}` +
-      `&chavePasse=${encodeURIComponent(chavePasse)}` +
-      `&chaveFuncionalidade=${encodeURIComponent(chaveFuncionalidade)}`;
-
-    const response = await fetch(url, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: tokenMobile,
-      },
+    const response = await fetch("/api/reciprocidade/sessao", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chavePasse }),
     });
 
     if (!response.ok) {
-      setMensagemBeneficiario(
-        "Não foi possível obter o CPF a partir da chavePasse."
-      );
-      return "";
+      setMensagemBeneficiario("Não foi possível autorizar o beneficiário.");
+      return null;
     }
 
-    const result = (await response.json()) as MosiaGrupoFamiliarApi;
-    const cpfMosia = result.data?.[0]?.chaveUnica?.replace(/\D/g, "") || "";
-
-    if (!cpfMosia) {
+    const sessao = (await response.json()) as SessaoReciprocidadeApi;
+    if (!sessao.beneficiario?.cpf) {
       setMensagemBeneficiario(
-        "A resposta do Mosia não retornou chaveUnica para o beneficiário."
+        "A autorização não retornou os dados do beneficiário."
       );
-      return "";
+      return null;
     }
 
-    setMensagemBeneficiario("CPF obtido pelo Mosia via chaveUnica.");
-    return cpfMosia;
+    setMensagemBeneficiario("Beneficiário autorizado.");
+    return sessao;
   }, []);
 
   const carregarDadosDoTitular = useCallback(async () => {
@@ -324,10 +285,10 @@ export default function Reciprocidade() {
     setMensagemAcesso("");
 
     try {
-      const cpfConsulta = await resolverCpfBeneficiario();
+      const sessao = await abrirSessaoBeneficiario();
       const resFiliadasPromise = fetch("/api/reciprocidade/filiadas/ativas");
 
-      if (!cpfConsulta) {
+      if (!sessao) {
         const resFiliadas = await resFiliadasPromise;
 
         if (resFiliadas.ok) {
@@ -338,25 +299,13 @@ export default function Reciprocidade() {
         setSolicitacoes([]);
         setDependentesDisponiveis([]);
         setSolicitacao(solicitacaoInicial);
-        setCpfTitular("");
+        setMensagemAcesso(mensagemTitularNaoEncontrado);
         return;
       }
 
-      setCpfTitular(cpfConsulta);
-
       const [resBeneficiario, resSolicitacoes, resFiliadas] = await Promise.all([
-        fetch(
-          `/api/reciprocidade/beneficiario?cpf=${encodeURIComponent(
-            cpfConsulta
-          )}`,
-          { cache: "no-store" }
-        ),
-        fetch(
-          `/api/reciprocidade/solicitacoes/titular/${encodeURIComponent(
-            cpfConsulta
-          )}`,
-          { cache: "no-store" }
-        ),
+        fetch("/api/reciprocidade/beneficiario", { cache: "no-store" }),
+        fetch("/api/reciprocidade/solicitacoes", { cache: "no-store" }),
         resFiliadasPromise,
       ]);
 
@@ -377,13 +326,12 @@ export default function Reciprocidade() {
             estadoSolicitante:
               familia.titular?.uf || dados.estadoSolicitante || "PB",
           }));
-          setCpfTitular(familia.titular.cpf.replace(/\D/g, ""));
         } else {
           setMensagemAcesso(mensagemTitularNaoEncontrado);
           setSolicitacao(solicitacaoInicial);
           setDependentesDisponiveis([]);
         }
-      } else if (resBeneficiario.status === 404) {
+      } else {
         setMensagemAcesso(mensagemTitularNaoEncontrado);
         setSolicitacao(solicitacaoInicial);
         setDependentesDisponiveis([]);
@@ -412,7 +360,7 @@ export default function Reciprocidade() {
       setCarregandoDependentes(false);
       setCarregandoFiliadas(false);
     }
-  }, [resolverCpfBeneficiario]);
+  }, [abrirSessaoBeneficiario]);
 
   useEffect(() => {
     carregarDadosDoTitular();
@@ -532,13 +480,12 @@ export default function Reciprocidade() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        titularCpf: cpfTitular || solicitacao.cpf.replace(/\D/g, ""),
         ufDestino: solicitacao.destinos[0]?.estado,
         dataInicio: solicitacao.dataIda,
         dataFim: solicitacao.dataVolta,
-        dependentesCpf: solicitacao.dependentes.map((dependente) =>
-          dependente.cpf.replace(/\D/g, "")
-        ),
+        dependentesCpf: solicitacao.dependentes
+          .map((dependente) => dependente.cpf.replace(/\D/g, ""))
+          .filter((cpf) => cpf !== solicitacao.cpf.replace(/\D/g, "")),
       }),
     });
 

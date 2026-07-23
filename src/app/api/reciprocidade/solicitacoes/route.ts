@@ -1,48 +1,40 @@
 import { NextResponse } from "next/server";
+import { apiBackendUrl, authorizationBeneficiario } from "@/lib/reciprocidadeBackend";
 
-export async function POST(req: Request) {
+async function chamarBackend(path: string, init?: RequestInit) {
+  const authorization = await authorizationBeneficiario();
+  if (!authorization) {
+    return NextResponse.json({ error: "Sessao ausente." }, { status: 401 });
+  }
+  const response = await fetch(apiBackendUrl(path), {
+    cache: "no-store",
+    ...init,
+    headers: { Authorization: authorization, ...(init?.headers || {}) },
+  });
+  const data = await response.json().catch(() => null);
+  return NextResponse.json(data, { status: response.status });
+}
+
+export async function GET() {
   try {
-    const body = await req.json();
-    const url = `${process.env.API_BASE_URL}/api/reciprocidade/solicitacoes`;
-    const headers = {
-      "Content-Type": "application/json",
-      ...(process.env.ACCESS_TOKEN
-        ? { "X-Access-Token": process.env.ACCESS_TOKEN }
-        : {}),
-    };
-    const res = await fetch(
-      url,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      }
-    );
+    return await chamarBackend("/api/reciprocidade/solicitacoes");
+  } catch (error) {
+    console.error("Erro ao consultar solicitacoes", error);
+    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+  }
+}
 
-    const text = await res.text();
-    let data: unknown = null;
-
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = text;
-    }
-
-    if (!res.ok) {
-      return NextResponse.json(
-        {
-          error: "Erro ao criar solicitação",
-          endpoint: url,
-          status: res.status,
-          data,
-        },
-        { status: res.status }
-      );
-    }
-
-    return NextResponse.json(data);
-  } catch (err) {
-    console.error(err);
+export async function POST(request: Request) {
+  try {
+    const payload = { ...((await request.json()) as Record<string, unknown>) };
+    delete payload.titularCpf;
+    return await chamarBackend("/api/reciprocidade/solicitacoes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    console.error("Erro ao criar solicitacao", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }
