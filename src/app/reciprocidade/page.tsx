@@ -263,6 +263,7 @@ export default function Reciprocidade() {
     const response = await fetch("/api/reciprocidade/sessao", {
       method: "POST",
       cache: "no-store",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chavePasse }),
     });
@@ -292,7 +293,9 @@ export default function Reciprocidade() {
 
     try {
       const sessao = await abrirSessaoBeneficiario();
-      const resFiliadasPromise = fetch("/api/reciprocidade/filiadas/ativas");
+      const resFiliadasPromise = fetch("/api/reciprocidade/filiadas/ativas", {
+        credentials: "include",
+      });
 
       if (!sessao) {
         const resFiliadas = await resFiliadasPromise;
@@ -310,8 +313,14 @@ export default function Reciprocidade() {
       }
 
       const [resBeneficiario, resSolicitacoes, resFiliadas] = await Promise.all([
-        fetch("/api/reciprocidade/beneficiario", { cache: "no-store" }),
-        fetch("/api/reciprocidade/solicitacoes", { cache: "no-store" }),
+        fetch("/api/reciprocidade/beneficiario", {
+          cache: "no-store",
+          credentials: "include",
+        }),
+        fetch("/api/reciprocidade/solicitacoes", {
+          cache: "no-store",
+          credentials: "include",
+        }),
         resFiliadasPromise,
       ]);
 
@@ -453,7 +462,7 @@ export default function Reciprocidade() {
     try {
       const response = await fetch(
         `/api/reciprocidade/solicitacoes/${encodeURIComponent(codigo)}/termo`,
-        { cache: "no-store" }
+        { cache: "no-store", credentials: "include" }
       );
 
       if (!response.ok) {
@@ -522,6 +531,7 @@ export default function Reciprocidade() {
 
     const res = await fetch("/api/reciprocidade/solicitacoes", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ufDestino: solicitacao.destinos[0]?.estado,

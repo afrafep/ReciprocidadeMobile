@@ -87,11 +87,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const expiresAt = new Date(resposta.expiresAt);
-    const maxAge = Math.max(
-      0,
-      Math.floor((expiresAt.getTime() - Date.now()) / 1000),
-    );
     const response = NextResponse.json({
       expiresAt: resposta.expiresAt,
       aplicacao: resposta.aplicacao,
@@ -103,8 +98,8 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge,
     });
+    response.headers.set("Cache-Control", "no-store, private");
     return response;
   } catch (error) {
     console.error("Erro ao criar sessao de reciprocidade", error);
