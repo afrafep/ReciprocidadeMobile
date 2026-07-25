@@ -16,6 +16,11 @@ type DebugEntry = {
   dados: unknown;
 };
 
+type DebugEventDetail = {
+  titulo: string;
+  dados: unknown;
+};
+
 export function DebugWrapper({ config, children }: { config: DebugConfig | null; children: ReactNode }) {
   const [entries, setEntries] = useState<DebugEntry[]>([]);
 
@@ -29,9 +34,15 @@ export function DebugWrapper({ config, children }: { config: DebugConfig | null;
     ]);
     const url = new URL(window.location.href);
     const chavePasse = url.searchParams.get("chavePasse") ?? url.searchParams.get("chavepasse") ?? "";
+    const registrarEventoAplicacao = (event: Event) => {
+      const detail = (event as CustomEvent<DebugEventDetail>).detail;
+      if (detail?.titulo) add(detail.titulo, detail.dados);
+    };
+    window.addEventListener("reciprocidade:debug", registrarEventoAplicacao);
+
     add("Inicialização", {
-      url: window.location.href,
-      chavePasse,
+      url: `${url.origin}${url.pathname}${chavePasse ? "?chavePasse=(valor oculto)" : ""}`,
+      chavePasse: chavePasse ? "RECEBIDA (valor oculto)" : "AUSENTE",
       chavePasseRecebida: Boolean(chavePasse),
       apiBaseUrl: config.apiBaseUrl,
       endpointSessaoJava: `${config.apiBaseUrl}${config.sessionEndpoint}`,
@@ -54,6 +65,16 @@ export function DebugWrapper({ config, children }: { config: DebugConfig | null;
       if (typeof payload === "string") {
         try { payload = JSON.parse(payload); } catch { /* mantém texto original */ }
       }
+      if (
+        pathname === "/api/reciprocidade/sessao" &&
+        payload &&
+        typeof payload === "object"
+      ) {
+        payload = {
+          ...(payload as Record<string, unknown>),
+          chavePasse: "RECEBIDA (valor oculto)",
+        };
+      }
       add("Requisição", {
         method,
         endpointNext: pathname,
@@ -62,10 +83,21 @@ export function DebugWrapper({ config, children }: { config: DebugConfig | null;
       });
       try {
         const response = await originalFetch(input, init);
-        const responseBody = await response.clone().json().catch(async () => {
-          const texto = await response.clone().text().catch(() => "");
-          return texto || null;
-        });
+        const contentType = response.headers.get("content-type") || "";
+        const arquivoBinario =
+          contentType.includes("application/pdf") ||
+          contentType.includes("application/octet-stream");
+        const responseBody = arquivoBinario
+          ? {
+              tipo: "arquivo binário (conteúdo oculto)",
+              contentType,
+              contentLength: response.headers.get("content-length"),
+              contentDisposition: response.headers.get("content-disposition"),
+            }
+          : await response.clone().json().catch(async () => {
+              const texto = await response.clone().text().catch(() => "");
+              return texto || null;
+            });
         add("Resposta", {
           method,
           endpointNext: pathname,
@@ -85,7 +117,10 @@ export function DebugWrapper({ config, children }: { config: DebugConfig | null;
       }
     };
 
-    return () => { window.fetch = originalFetch; };
+    return () => {
+      window.fetch = originalFetch;
+      window.removeEventListener("reciprocidade:debug", registrarEventoAplicacao);
+    };
   }, [config]);
 
   return <>{children}<DebugConsole config={config} entries={entries} onClear={() => setEntries([])} /></>;

@@ -22,6 +22,12 @@ declare global {
   }
 }
 
+function registrarDebugDownload(titulo: string, dados: unknown) {
+  window.dispatchEvent(
+    new CustomEvent("reciprocidade:debug", { detail: { titulo, dados } })
+  );
+}
+
 interface Dependente {
   id: number;
   nome: string;
@@ -466,12 +472,27 @@ export default function Reciprocidade() {
     setCodigoBaixandoTermo(codigo);
     setErroDownloadTermo("");
     setCodigoErroDownloadTermo(null);
+    registrarDebugDownload("Download do termo iniciado", {
+      codigo,
+      mosiaSDKDisponivel: Boolean(window.mosiaSDK),
+      postMessageDisponivel:
+        typeof window.mosiaSDK?.postMessage === "function",
+    });
 
     try {
       const response = await fetch(
         `/api/reciprocidade/solicitacoes/${encodeURIComponent(codigo)}/termo`,
         { cache: "no-store", credentials: "include" }
       );
+      registrarDebugDownload("Resposta do PDF recebida", {
+        codigo,
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        contentType: response.headers.get("content-type"),
+        contentLength: response.headers.get("content-length"),
+        contentDisposition: response.headers.get("content-disposition"),
+      });
 
       if (!response.ok) {
         const erro = (await response.json().catch(() => null)) as
@@ -486,6 +507,12 @@ export default function Reciprocidade() {
 
       const arquivo = await response.blob();
       const nomeArquivo = `termo_ciencia_reciprocidade_fisco_${codigo}.pdf`;
+      registrarDebugDownload("PDF carregado na WebView", {
+        codigo,
+        nomeArquivo,
+        tamanhoBytes: arquivo.size,
+        mimeType: arquivo.type || "não informado",
+      });
 
       if (window.mosiaSDK?.postMessage) {
         const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -498,18 +525,35 @@ export default function Reciprocidade() {
             reject(new Error("Não foi possível preparar o arquivo."));
           leitor.readAsDataURL(arquivo);
         });
+        const base64Content = dataUrl.split(",", 2)[1];
+        registrarDebugDownload("PDF convertido para Base64", {
+          codigo,
+          tamanhoBase64: base64Content?.length || 0,
+          prefixoDataUrlValido: dataUrl.startsWith("data:"),
+        });
 
         window.mosiaSDK.postMessage(
           JSON.stringify({
             type: "download-file",
             fileName: nomeArquivo,
-            base64Content: dataUrl.split(",", 2)[1],
+            base64Content,
             mimeType: arquivo.type || "application/pdf",
           })
         );
+        registrarDebugDownload("Comando enviado ao Mosia", {
+          codigo,
+          type: "download-file",
+          fileName: nomeArquivo,
+          mimeType: arquivo.type || "application/pdf",
+          conteudoBase64Enviado: Boolean(base64Content),
+        });
         return;
       }
 
+      registrarDebugDownload("Fallback de navegador acionado", {
+        codigo,
+        motivo: "mosiaSDK.postMessage não está disponível",
+      });
       const url = URL.createObjectURL(arquivo);
       const link = document.createElement("a");
       link.href = url;
@@ -519,6 +563,13 @@ export default function Reciprocidade() {
       link.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
+      registrarDebugDownload("Falha no download do termo", {
+        codigo,
+        nome: error instanceof Error ? error.name : "Erro desconhecido",
+        mensagem:
+          error instanceof Error ? error.message : "Erro desconhecido",
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       setCodigoErroDownloadTermo(codigo);
       setErroDownloadTermo(
         error instanceof Error
