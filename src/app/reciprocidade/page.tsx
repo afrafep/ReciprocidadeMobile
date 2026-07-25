@@ -4,8 +4,8 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   FaCalendarAlt,
   FaCheckCircle,
-  FaChevronDown,
   FaClipboardList,
+  FaDownload,
   FaMapMarkerAlt,
   FaPaperPlane,
   FaPlus,
@@ -184,7 +184,13 @@ export default function Reciprocidade() {
   const [dependenteSelecionadoCpf, setDependenteSelecionadoCpf] = useState("");
   const [paginaAtual, setPaginaAtual] = useState(1);
   const [cardsVisiveis, setCardsVisiveis] = useState<Set<number>>(new Set());
-  const [codigoAberto, setCodigoAberto] = useState<number | null>(null);
+  const [codigoBaixandoTermo, setCodigoBaixandoTermo] = useState<string | null>(
+    null
+  );
+  const [erroDownloadTermo, setErroDownloadTermo] = useState("");
+  const [codigoErroDownloadTermo, setCodigoErroDownloadTermo] = useState<
+    string | null
+  >(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
   const podeAvancar =
@@ -404,8 +410,7 @@ export default function Reciprocidade() {
 
             if (entry.isIntersecting) {
               proximos.add(id);
-            } else {
-              proximos.delete(id);
+              observer.unobserve(entry.target);
             }
           });
 
@@ -440,8 +445,47 @@ export default function Reciprocidade() {
     setPaginaAtual(1);
   }
 
-  function alternarCodigo(id: number) {
-    setCodigoAberto((codigoAtual) => (codigoAtual === id ? null : id));
+  async function baixarTermo(codigo: string) {
+    setCodigoBaixandoTermo(codigo);
+    setErroDownloadTermo("");
+    setCodigoErroDownloadTermo(null);
+
+    try {
+      const response = await fetch(
+        `/api/reciprocidade/solicitacoes/${encodeURIComponent(codigo)}/termo`,
+        { cache: "no-store" }
+      );
+
+      if (!response.ok) {
+        const erro = (await response.json().catch(() => null)) as
+          | { error?: string; mensagem?: string }
+          | null;
+        throw new Error(
+          erro?.mensagem ||
+            erro?.error ||
+            "Não foi possível baixar o termo da solicitação."
+        );
+      }
+
+      const arquivo = await response.blob();
+      const url = URL.createObjectURL(arquivo);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `termo_ciencia_reciprocidade_fisco_${codigo}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setCodigoErroDownloadTermo(codigo);
+      setErroDownloadTermo(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível baixar o termo da solicitação."
+      );
+    } finally {
+      setCodigoBaixandoTermo(null);
+    }
   }
 
   function abrirNovaSolicitacao() {
@@ -677,12 +721,7 @@ export default function Reciprocidade() {
                       : "translate-y-8 scale-[0.97] opacity-0 blur-sm"
                   }`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => alternarCodigo(item.id)}
-                    aria-expanded={codigoAberto === item.id}
-                    className="flex w-full items-center justify-between gap-4 text-left"
-                  >
+                  <div className="flex w-full items-center justify-between gap-4 text-left">
                     <span>
                       <strong className="block text-base font-extrabold text-slate-900">
                         Código {item.codigo || `#${String(item.id).padStart(4, "0")}`}
@@ -704,13 +743,32 @@ export default function Reciprocidade() {
                         </span>
                       </span>
                     </span>
+                  </div>
 
-                    <FaChevronDown
-                      className={`shrink-0 text-brand transition duration-300 ${
-                        codigoAberto === item.id ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
+                  <div className="mt-4 border-t border-slate-200 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => baixarTermo(item.codigo)}
+                      disabled={codigoBaixandoTermo === item.codigo}
+                      className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {codigoBaixandoTermo === item.codigo ? (
+                        <FaSpinner className="animate-spin" />
+                      ) : (
+                        <FaDownload />
+                      )}
+                      {codigoBaixandoTermo === item.codigo
+                        ? "Gerando termo..."
+                        : "Baixar termo da solicitação"}
+                    </button>
+
+                    {codigoErroDownloadTermo === item.codigo &&
+                      erroDownloadTermo && (
+                        <p className="mt-3 text-sm font-semibold text-red-600">
+                          {erroDownloadTermo}
+                        </p>
+                      )}
+                  </div>
                 </section>
               ))
             )}
