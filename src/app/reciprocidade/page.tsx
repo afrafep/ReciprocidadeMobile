@@ -536,7 +536,7 @@ export default function Reciprocidade() {
           JSON.stringify({
             type: "download-file",
             fileName: nomeArquivo,
-            base64Content,
+            base64: base64Content,
             mimeType: arquivo.type || "application/pdf",
           })
         );
@@ -545,6 +545,7 @@ export default function Reciprocidade() {
           type: "download-file",
           fileName: nomeArquivo,
           mimeType: arquivo.type || "application/pdf",
+          campoConteudo: "base64",
           conteudoBase64Enviado: Boolean(base64Content),
         });
         return;
