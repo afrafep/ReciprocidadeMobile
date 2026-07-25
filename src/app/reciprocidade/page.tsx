@@ -14,6 +14,14 @@ import {
   FaUser,
 } from "react-icons/fa";
 
+declare global {
+  interface Window {
+    mosiaSDK?: {
+      postMessage: (mensagem: string) => void;
+    };
+  }
+}
+
 interface Dependente {
   id: number;
   nome: string;
@@ -184,6 +192,13 @@ export default function Reciprocidade() {
   const [dependenteSelecionadoCpf, setDependenteSelecionadoCpf] = useState("");
   const [paginaAtual, setPaginaAtual] = useState(1);
   const [cardsVisiveis, setCardsVisiveis] = useState<Set<number>>(new Set());
+  const [codigoBaixandoTermo, setCodigoBaixandoTermo] = useState<string | null>(
+    null
+  );
+  const [erroDownloadTermo, setErroDownloadTermo] = useState("");
+  const [codigoErroDownloadTermo, setCodigoErroDownloadTermo] = useState<
+    string | null
+  >(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
   const podeAvancar =
@@ -447,6 +462,74 @@ export default function Reciprocidade() {
     setPaginaAtual(1);
   }
 
+  async function baixarTermo(codigo: string) {
+    setCodigoBaixandoTermo(codigo);
+    setErroDownloadTermo("");
+    setCodigoErroDownloadTermo(null);
+
+    try {
+      const response = await fetch(
+        `/api/reciprocidade/solicitacoes/${encodeURIComponent(codigo)}/termo`,
+        { cache: "no-store", credentials: "include" }
+      );
+
+      if (!response.ok) {
+        const erro = (await response.json().catch(() => null)) as
+          | { error?: string; mensagem?: string }
+          | null;
+        throw new Error(
+          erro?.mensagem ||
+            erro?.error ||
+            "Não foi possível baixar o termo da solicitação."
+        );
+      }
+
+      const arquivo = await response.blob();
+      const nomeArquivo = `termo_ciencia_reciprocidade_fisco_${codigo}.pdf`;
+
+      if (window.mosiaSDK?.postMessage) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const leitor = new FileReader();
+          leitor.onloadend = () =>
+            typeof leitor.result === "string"
+              ? resolve(leitor.result)
+              : reject(new Error("Não foi possível preparar o arquivo."));
+          leitor.onerror = () =>
+            reject(new Error("Não foi possível preparar o arquivo."));
+          leitor.readAsDataURL(arquivo);
+        });
+
+        window.mosiaSDK.postMessage(
+          JSON.stringify({
+            type: "download-file",
+            fileName: nomeArquivo,
+            base64Content: dataUrl.split(",", 2)[1],
+            mimeType: arquivo.type || "application/pdf",
+          })
+        );
+        return;
+      }
+
+      const url = URL.createObjectURL(arquivo);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = nomeArquivo;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setCodigoErroDownloadTermo(codigo);
+      setErroDownloadTermo(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível baixar o termo da solicitação."
+      );
+    } finally {
+      setCodigoBaixandoTermo(null);
+    }
+  }
+
   function abrirNovaSolicitacao() {
     if (mensagemAcesso) return;
 
@@ -706,14 +789,28 @@ export default function Reciprocidade() {
                   </div>
 
                   <div className="mt-4 border-t border-slate-200 pt-4">
-                    <a
-                      href={`/api/reciprocidade/solicitacoes/${encodeURIComponent(item.codigo)}/termo`}
-                      download={`termo_ciencia_reciprocidade_fisco_${item.codigo}.pdf`}
-                      className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-dark"
+                    <button
+                      type="button"
+                      onClick={() => baixarTermo(item.codigo)}
+                      disabled={codigoBaixandoTermo === item.codigo}
+                      className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <FaDownload />
-                      Baixar termo da solicitação
-                    </a>
+                      {codigoBaixandoTermo === item.codigo ? (
+                        <FaSpinner className="animate-spin" />
+                      ) : (
+                        <FaDownload />
+                      )}
+                      {codigoBaixandoTermo === item.codigo
+                        ? "Preparando termo..."
+                        : "Baixar termo da solicitação"}
+                    </button>
+
+                    {codigoErroDownloadTermo === item.codigo &&
+                      erroDownloadTermo && (
+                        <p className="mt-3 text-sm font-semibold text-red-600">
+                          {erroDownloadTermo}
+                        </p>
+                      )}
                   </div>
                 </section>
               ))
