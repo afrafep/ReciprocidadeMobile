@@ -2,6 +2,17 @@ import { NextResponse } from "next/server";
 
 const COOKIE_SESSAO = "reciprocidade_session";
 
+function opcoesCookieSessao() {
+  const producao = process.env.NODE_ENV === "production";
+
+  return {
+    httpOnly: true,
+    secure: producao,
+    sameSite: producao ? ("none" as const) : ("lax" as const),
+    path: "/",
+  };
+}
+
 type SessaoBackend = {
   accessToken: string;
   tokenType: string;
@@ -94,10 +105,7 @@ export async function POST(request: Request) {
       modoLocal,
     });
     response.cookies.set(COOKIE_SESSAO, resposta.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
+      ...opcoesCookieSessao(),
     });
     response.headers.set("Cache-Control", "no-store, private");
     return response;
@@ -113,10 +121,7 @@ export async function POST(request: Request) {
 export async function DELETE() {
   const response = NextResponse.json({ encerrada: true });
   response.cookies.set(COOKIE_SESSAO, "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
+    ...opcoesCookieSessao(),
     maxAge: 0,
   });
   return response;
