@@ -186,6 +186,8 @@ export default function Reciprocidade() {
   const [solicitacoes, setSolicitacoes] = useState<SolicitacaoCadastrada[]>([]);
   const [busca, setBusca] = useState<BuscaRapida>(buscaInicial);
   const [enviado, setEnviado] = useState(false);
+  const [enviandoSolicitacao, setEnviandoSolicitacao] = useState(false);
+  const [erroEnvioSolicitacao, setErroEnvioSolicitacao] = useState("");
   const [carregandoSolicitacoes, setCarregandoSolicitacoes] = useState(true);
   const [carregandoDependentes, setCarregandoDependentes] = useState(true);
   const [dependentesDisponiveis, setDependentesDisponiveis] = useState<
@@ -461,6 +463,7 @@ export default function Reciprocidade() {
       [campo]: valor,
     }));
     setEnviado(false);
+    setErroEnvioSolicitacao("");
   }
 
   function atualizarBusca(valor: string) {
@@ -588,6 +591,7 @@ export default function Reciprocidade() {
     setMostraFormulario(true);
     setPassoAtual(0);
     setEnviado(false);
+    setErroEnvioSolicitacao("");
     carregarDadosDoTitular();
   }
 
@@ -600,6 +604,7 @@ export default function Reciprocidade() {
     setDependenteSelecionadoCpf("");
     setPassoAtual(0);
     setEnviado(false);
+    setErroEnvioSolicitacao("");
     setMostraFormulario(false);
   }
 
@@ -613,41 +618,76 @@ export default function Reciprocidade() {
 
   async function enviarSolicitacao(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (enviandoSolicitacao) return;
 
-    const res = await fetch("/api/reciprocidade/solicitacoes", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ufDestino: solicitacao.destinos[0]?.estado,
-        dataInicio: solicitacao.dataIda,
-        dataFim: solicitacao.dataVolta,
-        dependentesCpf: solicitacao.dependentes
-          .map((dependente) => dependente.cpf.replace(/\D/g, ""))
-          .filter((cpf) => cpf !== solicitacao.cpf.replace(/\D/g, "")),
-      }),
-    });
+    const ufDestino = solicitacao.destinos[0]?.estado || "";
+    const solicitacaoDuplicada = solicitacoes.some(
+      (item) =>
+        item.destinos.includes(ufDestino) &&
+        item.dataIda === solicitacao.dataIda &&
+        item.dataVolta === solicitacao.dataVolta
+    );
 
-    if (!res.ok) {
+    if (solicitacaoDuplicada) {
+      setErroEnvioSolicitacao(
+        "Já existe uma solicitação para esta filiada no mesmo período."
+      );
       return;
     }
 
-    const data = (await res.json()) as SolicitacaoApi;
-    setSolicitacoes((lista) => [
-      normalizarSolicitacaoApi(data, solicitacao.estadoSolicitante),
-      ...lista,
-    ]);
-    setSolicitacao((dados) => ({
-      ...solicitacaoInicial,
-      nome: dados.nome,
-      cpf: dados.cpf,
-      estadoSolicitante: dados.estadoSolicitante,
-    }));
-    setDependenteSelecionadoCpf("");
-    setPassoAtual(0);
-    setPaginaAtual(1);
-    setMostraFormulario(false);
-    setEnviado(true);
+    setEnviandoSolicitacao(true);
+    setErroEnvioSolicitacao("");
+
+    try {
+      const res = await fetch("/api/reciprocidade/solicitacoes", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ufDestino,
+          dataInicio: solicitacao.dataIda,
+          dataFim: solicitacao.dataVolta,
+          dependentesCpf: solicitacao.dependentes
+            .map((dependente) => dependente.cpf.replace(/\D/g, ""))
+            .filter((cpf) => cpf !== solicitacao.cpf.replace(/\D/g, "")),
+        }),
+      });
+
+      if (!res.ok) {
+        const erro = (await res.json().catch(() => null)) as
+          | { mensagem?: string; error?: string }
+          | null;
+        setErroEnvioSolicitacao(
+          erro?.mensagem ||
+            erro?.error ||
+            "Não foi possível enviar a solicitação. Tente novamente."
+        );
+        return;
+      }
+
+      const data = (await res.json()) as SolicitacaoApi;
+      setSolicitacoes((lista) => [
+        normalizarSolicitacaoApi(data, solicitacao.estadoSolicitante),
+        ...lista,
+      ]);
+      setSolicitacao((dados) => ({
+        ...solicitacaoInicial,
+        nome: dados.nome,
+        cpf: dados.cpf,
+        estadoSolicitante: dados.estadoSolicitante,
+      }));
+      setDependenteSelecionadoCpf("");
+      setPassoAtual(0);
+      setPaginaAtual(1);
+      setMostraFormulario(false);
+      setEnviado(true);
+    } catch {
+      setErroEnvioSolicitacao(
+        "Não foi possível enviar a solicitação. Verifique sua conexão e tente novamente."
+      );
+    } finally {
+      setEnviandoSolicitacao(false);
+    }
   }
 
   function selecionarPessoaSolicitacao(cpfSelecionado: string) {
@@ -696,6 +736,7 @@ export default function Reciprocidade() {
       ).slice(0, 1),
     }));
     setEnviado(false);
+    setErroEnvioSolicitacao("");
   }
 
   if (!mostraFormulario) {
@@ -1123,14 +1164,27 @@ export default function Reciprocidade() {
           ) : (
             <button
               type="submit"
-              disabled={!podeAvancar}
+              disabled={!podeAvancar || enviandoSolicitacao}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-brand-hover hover:shadow-md disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:translate-y-0 disabled:hover:shadow-none"
             >
-              <FaPaperPlane />
-              Enviar solicitação
+              {enviandoSolicitacao ? (
+                <FaSpinner className="animate-spin" />
+              ) : (
+                <FaPaperPlane />
+              )}
+              {enviandoSolicitacao ? "Enviando..." : "Enviar solicitação"}
             </button>
           )}
         </div>
+
+        {erroEnvioSolicitacao && (
+          <p
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700"
+          >
+            {erroEnvioSolicitacao}
+          </p>
+        )}
       </form>
     </main>
   );
