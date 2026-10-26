@@ -43,6 +43,7 @@ interface SolicitacaoReciprocidade {
   nome: string;
   cpf: string;
   dependentes: Dependente[];
+  emailTitular: string;
   estadoSolicitante: string;
   destinos: Destino[];
   dataIda: string;
@@ -84,6 +85,7 @@ interface BeneficiarioFamiliaApi {
     cpf: string;
     nome: string;
     uf?: string;
+    email?: string | null;
   };
   dependentes?: DependenteApi[];
 }
@@ -112,6 +114,7 @@ const solicitacaoInicial: SolicitacaoReciprocidade = {
   nome: "",
   cpf: "",
   dependentes: [],
+  emailTitular: "",
   estadoSolicitante: "",
   destinos: [{ id: 1, estado: "" }],
   dataIda: "",
@@ -352,6 +355,7 @@ export default function Reciprocidade() {
           ufTitular = familia.titular.uf || "PB";
           setSolicitacao((dados) => ({
             ...dados,
+            emailTitular: familia.titular?.email?.trim() || "",
             nome: familia.titular?.nome || dados.nome,
             cpf: familia.titular?.cpf || dados.cpf,
             estadoSolicitante:
@@ -609,6 +613,7 @@ export default function Reciprocidade() {
   }
 
   function avancarPasso() {
+    if (!document.querySelector("form")?.reportValidity()) return;
     setPassoAtual((passo) => Math.min(passo + 1, passos.length - 1));
   }
 
@@ -645,6 +650,7 @@ export default function Reciprocidade() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ufDestino,
+          emailTitular: solicitacao.emailTitular.trim(),
           dataInicio: solicitacao.dataIda,
           dataFim: solicitacao.dataVolta,
           dependentesCpf: solicitacao.dependentes
@@ -1017,6 +1023,25 @@ export default function Reciprocidade() {
                 </select>
               </label>
             </div>
+
+            <label className="block space-y-2">
+              <span className="text-sm font-semibold text-slate-700">
+                E-mail do titular
+              </span>
+              <input
+                type="email"
+                autoComplete="email"
+                maxLength={160}
+                value={solicitacao.emailTitular}
+                onChange={(event) => atualizarCampo("emailTitular", event.target.value)}
+                disabled={carregandoDependentes}
+                placeholder="Informe seu e-mail"
+                className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-base text-slate-950 outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft disabled:bg-slate-50"
+              />
+              <p className="text-sm text-slate-500">
+                Confira o e-mail para receber os números das carteiras. Se preferir outro endereço, altere aqui. A alteração vale apenas para esta solicitação.
+              </p>
+            </label>
 
             {!carregandoDependentes && pessoasDisponiveis.length === 0 && (
               <p className="text-sm text-slate-500">
